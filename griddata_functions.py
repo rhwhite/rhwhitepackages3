@@ -14,10 +14,69 @@ import datetime as dt
 import pandas as pd
 import xarray as xr
 import calendar
-from rhwhitepackages.CESMconst import *
+from rhwhitepackages3.CESMconst import *
+from rhwhitepackages3.CESMmanip import *
+
+def ddy_merc(invar):
+    # based on Hoskins and Karoly:
+    # https://journals.ametsoc.org/doi/pdf/10.1175/1520-0469%281981%29038%3C1179%3ATSLROA%3E2.0.CO%3B2
+    #  ddy = cos(phi)/a ddphi
+
+    try:
+        nlats = len(invar['lat'])
+        latname = 'lat'
+        lats = invar['lat']
+    except KeyError:
+        nlats = len(invar['latitude'])
+        latname = 'latitude'
+        lats = invar['latitude']
+
+    phi = np.deg2rad(lats)
+    cosphi = np.cos(phi).values
+
+    dims = invar.shape
+
+    dvardy = invar.copy(deep=True)
+
+    if latname == 'lat':
+        dims_var = invar.dims
+        latidx_var = dims_var.index('lat')
+
+        dims_lat = invar.lat.dims
+        latidx_lat = dims_lat.index('lat')
+
+        ddy = invar.copy(deep=True)
+        ddy.isel(lat=0)[...] = 0
+
+        dvar = np.gradient(invar,axis=latidx_var)
+        dphi = np.gradient(phi,axis=latidx_lat)
+        if len(dims_var) > 1:
+            dvardy[...] = (dvar/dphi[:,None]) * (cosphi[:,None] / rearth)
+        else:
+            dvardy[...] = (dvar/dphi) * (cosphi / rearth)
+
+    elif latname == 'latitude':
+        dims_var = invar.dims
+        latidx_var = dims_var.index('latitude')
+
+        dims_lat = invar.latitude.dims
+        latidx_lat = dims_lat.index('latitude')
+
+        ddphi = invar.copy(deep=True)
+        ddphi.isel(latitude=0)[...] = 0
+
+        dvar = np.gradient(invar,axis=latidx_var)
+        dphi = np.gradient(phi,axis=latidx_lat)
+
+        if len(dims_var) > 1:
+            dvardy[...] = (dvar/dphi[:,None]) * (cosphi[:,None] / rearth)
+        else:
+            dvardy[...] = (dvar/dphi) *(cosphi / rearth)
+
+    return(dvardy)
 
 
-def ddy(invar):
+def ddy_vect(invar):
     # based on https://www.ncl.ucar.edu/Document/Functions/Built-in/uv2dv_cfd.shtml
     # H.B. Bluestein [Synoptic-Dynamic Meteorology in Midlatitudes, 1992, Oxford Univ. Press p113-114]
 
@@ -62,7 +121,6 @@ def ddy(invar):
             ddy[nlats-1] = 0
     else:
         # more than 1D array:
-        
         if latname == 'lat':
             ddy = invar.copy(deep=True)
             ddy.isel(lat=0)[...] = 0
