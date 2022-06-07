@@ -3,6 +3,111 @@
 import numpy as np
 import xarray as xr
 import math
+from scipy.interpolate import interp1d
+
+# Look for waveguides by searching for turning points at specific wavenumbers
+def iden_waveguide_TPs_map(inKs2,inU,ninterp,Uthresh,WGwidth,WGdepth,wnstart,wnend,nwgs):
+    orig_lats = inKs2.latitude
+    # latitudes for cubic spline interpolation
+    lats_li = np.linspace(np.amin(orig_lats),np.amax(orig_lats),ninterp)
+
+    TPs = {}
+    WGlatmin = np.ndarray([nwgs,wnend - wnstart+1])
+    WGlatmax = np.ndarray([nwgs,wnend - wnstart+1])
+    WGlatmin[...] = np.nan
+    WGlatmax[...] = np.nan
+
+
+    # define waveguide map so latitude indexing works easily
+    nlats = 90
+    nk = wnend - wnstart+1
+    WGmap = np.ndarray([nk,nlats])
+
+    wg_map = xr.DataArray(WGmap,coords={
+                       'k':np.arange(wnstart,wnend+1),
+                       'latitude':np.linspace(0,90,nlats)},
+                        dims=('k','latitude'))
+    wg_map[...] = 0
+
+    if np.any(np.isfinite(inKs2.values)): # only if there are some non-nan values
+        LI = interp1d(orig_lats[::-1],inKs2[::-1])
+        LI_U = interp1d(orig_lats[::-1],inU[::-1])
+
+        Ks2_li = xr.DataArray(LI(lats_li),coords={'latitude':lats_li},dims = ('latitude'))
+        U_li = xr.DataArray(LI_U(lats_li),coords={'latitude':lats_li},dims = ('latitude'))
+
+        # For each wavenumber (5,6,7,8) find the turning points
+
+        for iwn in range(wnstart,wnend+1):
+            Ks2_wn = (Ks2_li - iwn**2)
+            # Find local minima
+            TPs[iwn] = np.where(np.diff(np.sign(Ks2_wn)))[0]
+
+            # For each pair of TPs, check if it's a waveguide
+            iwg = 0
+            nTPs = len(TPs[iwn])
+            for iTP in np.arange(0,nTPs-1):
+                # Width of waveguide criteria:
+                TPlat1 = Ks2_li.latitude[TPs[iwn][iTP]]
+                TPlat2 = Ks2_li.latitude[TPs[iwn][iTP+1]+1] # add 1 as the turning points finds the latitude before
+                if np.abs(TPlat1 - TPlat2) >= WGwidth:
+                    # U threshold criteria
+                    if ~np.any(U_li[TPs[iwn][iTP]:TPs[iwn][iTP+1]].values < Uthresh):
+                        # Waveguide depth critera:
+                        if np.any(Ks2_li[TPs[iwn][iTP]+1:TPs[iwn][iTP+1]-1].values > (iwn+WGdepth)**2):
+                            WGlatmin[iwg,iwn-wnstart] = TPlat1
+                            WGlatmax[iwg,iwn-wnstart] = TPlat2
+                            iwg +=1
+
+                            wg_map.sel(k=iwn).sel(latitude=slice(TPlat1,TPlat2)).values[...] = 1
+
+    return(WGlatmin,WGlatmax,wg_map.values)
+
+
+
+# Look for waveguides by searching for turning points at specific wavenumbers
+def iden_waveguide_TPs(inKs2,inU,ninterp,Uthresh,WGwidth,WGdepth,wnstart,wnend,nwgs):
+    orig_lats = inKs2.latitude
+    # latitudes for cubic spline interpolation
+    lats_li = np.linspace(np.amin(orig_lats),np.amax(orig_lats),ninterp)
+
+    TPs = {}
+    WGlatmin = np.ndarray([nwgs,wnend - wnstart+1])
+    WGlatmax = np.ndarray([nwgs,wnend - wnstart+1])
+    WGlatmin[...] = np.nan
+    WGlatmax[...] = np.nan
+
+    if np.any(np.isfinite(inKs2.values)): # only if there are some non-nan values
+        LI = interp1d(orig_lats[::-1],inKs2[::-1])
+        LI_U = interp1d(orig_lats[::-1],inU[::-1])
+
+        Ks2_li = xr.DataArray(LI(lats_li),coords={'latitude':lats_li},dims = ('latitude'))
+        U_li = xr.DataArray(LI_U(lats_li),coords={'latitude':lats_li},dims = ('latitude'))
+
+        # For each wavenumber (5,6,7,8) find the turning points
+
+        for iwn in range(wnstart,wnend+1):
+            Ks2_wn = (Ks2_li - iwn**2)
+            # Find local minima
+            TPs[iwn] = np.where(np.diff(np.sign(Ks2_wn)))[0]
+
+            # For each pair of TPs, check if it's a waveguide
+            iwg = 0
+            nTPs = len(TPs[iwn])
+            for iTP in np.arange(0,nTPs-1):
+                # Waveguide depth critera:
+                if np.any(Ks2_li[TPs[iwn][iTP]+1:TPs[iwn][iTP+1]-1].values > (iwn+WGdepth)**2):
+                    # U threshold criteria
+                    if ~np.any(U_li[TPs[iwn][iTP]:TPs[iwn][iTP+1]].values < Uthresh):
+                        # Width of waveguide criteria:
+                        TPlat1 = Ks2_li.latitude[TPs[iwn][iTP]]
+                        TPlat2 = Ks2_li.latitude[TPs[iwn][iTP+1]+1] # add 1 as the turning points finds the latitude before
+                        if np.abs(TPlat1 - TPlat2) >= WGwidth:
+                            WGlatmin[iwg,iwn-wnstart] = TPlat1
+                            WGlatmax[iwg,iwn-wnstart] = TPlat2
+                            iwg +=1
+
+    return(WGlatmin,WGlatmax)
 
 # count_waveguides and write out magnitude and latitude
 # Only looking for waveguides at 2 specific latitudes
