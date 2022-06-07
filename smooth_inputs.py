@@ -17,7 +17,7 @@ import pandas as pd
 import xarray as xr
 import math
 from scipy import stats
-from rhwhitepackages.readwrite import *
+from rhwhitepackages3.readwrite import *
 
 # Define functions for interpolating without mask
 def findnextland_pop(SST,ilat,ilon,imonth,nlon):

@@ -13,7 +13,7 @@ On Oct 4 2017
 edited by RHWhite rachel.white@cantab.net
 
 '''
-from shr_const_mod import *
+from rhwhitepackages3.shr_const_mod import *
 
 avogad      = SHR_CONST_AVOGAD     #! Avogadro's number (molecules/kmole)
 boltz       = SHR_CONST_BOLTZ      #! Boltzman's constant (J/K/molecule)

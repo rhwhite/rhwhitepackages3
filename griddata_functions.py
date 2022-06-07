@@ -231,3 +231,26 @@ def ddx(invar):
         ddx.isel(lat = ilat)[...] = dvar/dx
 
     return(ddx)
+
+def ddp(invar):
+    dims = invar.dims
+    try:
+        levidx = dims.index('lev_p')
+        levels = invar.lev_p * 100.0
+    except ValueError:
+        levidx = dims.index('lev_int')
+        levels = invar.lev_int * 100.0
+
+    dvar = np.gradient(invar,axis=levidx)
+    dlev = np.gradient(levels)
+
+    if len(invar.dims) == 2:
+        da = xr.DataArray(dvar/dlev[:,None], coords=[levels, invar.lat], dims=['lev_p', 'lat'])
+
+    elif len(invar.dims) == 3:
+        da = xr.DataArray(dvar/dlev, coords=[invar.time,levels, invar.lat], dims=['time','lev_p', 'lat'])
+    elif len(invar.dims) == 4:
+        da = xr.DataArray(dvar/dlev, coords=[invar.time,levels, invar.lat,invar.lon], 
+                          dims=['time','lev_p', 'lat','lon'])
+
+    return(da)

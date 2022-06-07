@@ -5,9 +5,6 @@ Created on 13 Aug 2019
 @author: rachel, rachel.white@cantab.net
 
 Functions to calculation the barotropic refractive index
-There are slightly different ways of calculating this in the literature,
-potentially due to different ways of approximating to a Mercator projection.
-Each method gives similar results
 
 """
 
@@ -61,7 +58,6 @@ def calc_Ks(Uin):
 
     betaM = betaM1 - ddy_2
     # Now calculate Ks from BetaM
-    # Hoskins and Ambrizzi and Hoskins and Karoly now agree
     Ks2 = a * a * betaM/Um
 
     Ks = np.sqrt(Ks2)

@@ -23,8 +23,8 @@ g2kg = (1.0/1000.0)  # converstion factor from g to kg
 cm2m = (1.0/100)   # conversion factor from cm to m
 mb_to_Pa = 100.  # conversion factor from mb to Pa
 
-import rhwhitepackages
-from rhwhitepackages.physconst import *
+import rhwhitepackages3
+from rhwhitepackages3.physconst import *
 
 def getOHC(indata,heights,depth):
     temp = C2K + indata.TEMP.mean(dim='time') #K

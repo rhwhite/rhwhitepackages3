@@ -7,7 +7,7 @@ import datetime as dt
 import pandas
 import xarray as xr
 import Ngl
-from rhwhitepackages.readwrite import *
+from rhwhitepackages3.readwrite import *
 
 def setplotrange(resMP,a,b,c):
         resMP.cnMinLevelValF = a
