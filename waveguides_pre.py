@@ -15,15 +15,22 @@ from datetime import date
 ## Preprocess code - final
 def lowpass_butter(data,day1,fs,order=5):
     lowcut=2.0 * (1.0/day1) * (1.0/fs) # fraction of Nyquist frequency; 2.0 because Nyquist frequency is 0.5 samples per days
-    sos = butter(5, lowcut, btype='lowpass',output='sos') #low pass filter
+    sos = butter(order, lowcut, btype='lowpass',output='sos') #low pass filter
 
     # run filter forwards and backwards to get zero phase shift
     filtered = signal.sosfiltfilt(sos, data, axis=0)
 
-    xrtimefilt = xr.DataArray(filtered,coords={'time':datain.time,
+    try:
+        xrtimefilt = xr.DataArray(filtered,coords={'time':data.time,
                                              'longitude':data.longitude.values,'latitude':data.latitude.values},
-                                      dims = ('time','latitude','longitude'))
+                                             dims = ('time','latitude','longitude'))
 
+    except:
+        xrtimefilt = xr.DataArray(filtered,coords={'time':data.time,
+                                             'longitude':data.lon.values,'latitude':data.lat.values},
+                                             dims = ('time','latitude','longitude'))
+        
+        
     return(xrtimefilt)
 
 def butter_time_filter_wind(infile,cutoff):
