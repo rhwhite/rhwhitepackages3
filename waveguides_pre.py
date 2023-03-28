@@ -33,7 +33,7 @@ def lowpass_butter(data,day1,fs,order=5):
         
     return(xrtimefilt)
 
-def butter_time_filter_wind(infile,cutoff):
+def butter_time_filter_wind(infile,cutoff,varname='u'):
     #datain_noleap = infile.sel(time=~((infile.time.dt.month == 2) & (infile.time.dt.day == 29)))
 
     # Get appropriate weights, convolve, and select every 5th timestep
@@ -42,7 +42,7 @@ def butter_time_filter_wind(infile,cutoff):
     day1     = cutoff #days
 
     xrtimefilt = lowpass_butter(infile,day1,fs)
-    xrtimefilt = xrtimefilt.to_dataset(name='u')
+    xrtimefilt = xrtimefilt.to_dataset(name=varname)
    
     return(xrtimefilt)
  
