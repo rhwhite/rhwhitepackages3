@@ -34,14 +34,14 @@ def lowpass_butter(data,day1,fs,order=5):
     return(xrtimefilt)
 
 def butter_time_filter_wind(infile,cutoff):
-    datain_noleap = infile.sel(time=~((infile.time.dt.month == 2) & (infile.time.dt.day == 29)))
+    #datain_noleap = infile.sel(time=~((infile.time.dt.month == 2) & (infile.time.dt.day == 29)))
 
     # Get appropriate weights, convolve, and select every 5th timestep
     nwghts = 31
     fs = 1.0          # 1 per day in 1/days (sampling frequency)
     day1     = cutoff #days
 
-    xrtimefilt = lowpass_butter(datain_noleap,day1,fs)
+    xrtimefilt = lowpass_butter(infile,day1,fs)
     xrtimefilt = xrtimefilt.to_dataset(name='u')
    
     return(xrtimefilt)
@@ -73,29 +73,46 @@ def fourier_Tukey(indata,nlons,peak_freq,ndegs=360):
 
     return(tur_filtered_sig,filtered_sig,t)
 
-def zonal_filter_wind(infile,peak_freq):
-    nlats = len(infile.latitude)
     ntimes = len(infile.time)
-
     tur_filt_data = np.ndarray(infile.shape)
     std_filt_data = np.ndarray(infile.shape)
+    
+    try:
+        nlats = len(infile.latitude)   
 
-    for itime in range(0,ntimes):
-        for ilat in range(0,nlats):
-            x = infile.isel(latitude=ilat).isel(time=itime)
-            tur_filt_data[itime,ilat,:],std_filt_data[itime,ilat,:],t = fourier_Tukey(
-                                            x.values,len(x.longitude),peak_freq=peak_freq)
+        for itime in range(0,ntimes):
+            for ilat in range(0,nlats):
+                x = infile.isel(latitude=ilat).isel(time=itime)
+                tur_filt_data[itime,ilat,:],std_filt_data[itime,ilat,:],t = fourier_Tukey(
+                                                x.values,len(x.longitude),peak_freq=peak_freq)
 
-    data_turfilt = xr.DataArray(tur_filt_data,coords={'time':infile.time,
-                                                 'longitude':infile.longitude,'latitude':infile.latitude},
-                                          dims = ('time','latitude','longitude'))
-    data_stdfilt = xr.DataArray(std_filt_data,coords={'time':infile.time,
-                                                 'longitude':infile.longitude,'latitude':infile.latitude},
-                                          dims = ('time','latitude','longitude'))
+        data_turfilt = xr.DataArray(tur_filt_data,coords={'time':infile.time,
+                                                     'longitude':infile.longitude,'latitude':infile.latitude},
+                                              dims = ('time','latitude','longitude'))
+        data_stdfilt = xr.DataArray(std_filt_data,coords={'time':infile.time,
+                                                     'longitude':infile.longitude,'latitude':infile.latitude},
+                                              dims = ('time','latitude','longitude'))
 
+    except:
+        nlats = len(infile.lat)
+
+        for itime in range(0,ntimes):
+            for ilat in range(0,nlats):
+                x = infile.isel(lat=ilat).isel(time=itime)
+                tur_filt_data[itime,ilat,:],std_filt_data[itime,ilat,:],t = fourier_Tukey(
+                                                x.values,len(x.lon),peak_freq=peak_freq)
+
+        data_turfilt = xr.DataArray(tur_filt_data,coords={'time':infile.time,
+                                                     'longitude':infile.lon.values,'latitude':infile.lat.values},
+                                              dims = ('time','latitude','longitude'))
+        data_stdfilt = xr.DataArray(std_filt_data,coords={'time':infile.time,
+                                                     'longitude':infile.lon.values,'latitude':infile.lat.values},
+                                              dims = ('time','latitude','longitude'))
+
+    
     data_turfilt = data_turfilt.to_dataset(name='u')
     return(data_turfilt)
-    
+
 def calc_Ks_SG(Uin,SG_step1=0,SG_step2=0,winlen=41):
     ## Calculate BetaM
     ## Hoskins and Karoly (see also Vallis (page 551) and Petoukhov et al 2013
