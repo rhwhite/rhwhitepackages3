@@ -8,11 +8,16 @@ from scipy import signal
 from scipy.signal import butter, lfilter, sosfilt
 import scipy.fftpack as fftpack
 
+from datetime import date
 
+# Once finalized these should be saved to rhwhitepackages3.waveguides_pre
+
+## Preprocess code - final
 def lowpass_butter(data,day1,fs,order=5):
     lowcut=2.0 * (1.0/day1) * (1.0/fs) # fraction of Nyquist frequency; 2.0 because Nyquist frequency is 0.5 samples per days
     sos = butter(5, lowcut, btype='lowpass',output='sos') #low pass filter
 
+    # run filter forwards and backwards to get zero phase shift
     filtered = signal.sosfiltfilt(sos, data, axis=0)
 
     xrtimefilt = xr.DataArray(filtered,coords={'time':datain.time,
@@ -21,6 +26,19 @@ def lowpass_butter(data,day1,fs,order=5):
 
     return(xrtimefilt)
 
+def butter_time_filter_wind(infile,cutoff):
+    datain_noleap = infile.sel(time=~((infile.time.dt.month == 2) & (infile.time.dt.day == 29)))
+
+    # Get appropriate weights, convolve, and select every 5th timestep
+    nwghts = 31
+    fs = 1.0          # 1 per day in 1/days (sampling frequency)
+    day1     = cutoff #days
+
+    xrtimefilt = lowpass_butter(datain_noleap,day1,fs)
+    xrtimefilt = xrtimefilt.to_dataset(name='u')
+   
+    return(xrtimefilt)
+ 
 def fourier_Tukey(indata,nlons,peak_freq,ndegs=360):
     X_fft = fftpack.fft(indata)
 
@@ -48,30 +66,18 @@ def fourier_Tukey(indata,nlons,peak_freq,ndegs=360):
 
     return(tur_filtered_sig,filtered_sig,t)
 
-def butter_time_filter_wind(infile,cutoff,Uvar):
-    datain_noleap = infile[Uvar].sel(time=~((infile[Uvar].time.dt.month == 2) & (infile[Uvar].time.dt.day == 29)))
-
-    # Get appropriate weights, convolve, and select every 5th timestep
-    nwghts = 31
-    fs = 1.0          # 1 per day in 1/days (sampling frequency)
-    day1     = cutoff #days
-
-    xrtimefilt = lowpass_butter(datain_noleap,day1,fs)
-    
-    return(xrtimefilt)
-
-def zonal_filter_wind(infile,peak_freq,Uvar):
+def zonal_filter_wind(infile,peak_freq):
     nlats = len(infile.latitude)
     ntimes = len(infile.time)
 
     tur_filt_data = np.ndarray(infile.shape)
     std_filt_data = np.ndarray(infile.shape)
 
-    print('running zonal filter')
     for itime in range(0,ntimes):
         for ilat in range(0,nlats):
             x = infile.isel(latitude=ilat).isel(time=itime)
-            tur_filt_data[itime,ilat,:],std_filt_data[itime,ilat,:],t = fourier_Tukey(x.values,len(x.longitude),peak_freq=peak_freq)
+            tur_filt_data[itime,ilat,:],std_filt_data[itime,ilat,:],t = fourier_Tukey(
+                                            x.values,len(x.longitude),peak_freq=peak_freq)
 
     data_turfilt = xr.DataArray(tur_filt_data,coords={'time':infile.time,
                                                  'longitude':infile.longitude,'latitude':infile.latitude},
@@ -82,8 +88,77 @@ def zonal_filter_wind(infile,peak_freq,Uvar):
 
     data_turfilt = data_turfilt.to_dataset(name='u')
     return(data_turfilt)
+    
+def calc_Ks_SG(Uin,SG_step1=0,SG_step2=0,winlen=41):
+    ## Calculate BetaM
+    ## Hoskins and Karoly (see also Vallis (page 551) and Petoukhov et al 2013
+    ## and Hoskins and Ambrizzi (1993))
 
-def calc_Ks(Uin,rolling=0,rolling2=0,rolling3=0):
+    OMEGA = 7.2921E-5
+    a = 6.3781E6
+    try:
+        lats_r = np.deg2rad(Uin.latitude)
+    except AttributeError:
+        lats_r = np.deg2rad(Uin.lat)
+
+    coslat = np.cos(lats_r)
+
+    betaM1 = 2.0 * OMEGA * coslat * coslat / a
+
+    Um = Uin / coslat
+
+    cos2Um = Um * coslat * coslat
+
+    # first differentiation
+    ddy_1 = ddy_merc(cos2Um)
+    # divide by cos2phi
+    ddy_1_over_cos2p = ddy_1 * (1.0/(coslat * coslat))
+
+    # Apply Savitzky-Golay filter
+    if SG_step1 > 0:
+        # Check that axis 1 is latitude
+        if Uin.dims[1] in ['latitude','lat','lats']:
+            temp = signal.savgol_filter(ddy_1_over_cos2p, 
+                                            window_length=winlen, polyorder=SG_step1, 
+                                            axis=1)
+            
+            ddy_1_over_cos2p = xr.DataArray(temp,coords={'time':ddy_1_over_cos2p.time,
+                                                'longitude':ddy_1_over_cos2p.longitude,
+                                                'latitude':ddy_1_over_cos2p.latitude},
+                                          dims = ('time','latitude','longitude'))
+
+        else:
+            error('latitude axis is not as expected, or not named latitude, lat or lats')
+    
+    # second differentiation
+    ddy_2 = ddy_merc(ddy_1_over_cos2p)
+
+    # Apply Savitzky-Golay filter
+    if SG_step2 > 0:
+        # Check that axis 1 is latitude
+        if Uin.dims[1] in ['latitude','lat','lats']:
+            temp = signal.savgol_filter(ddy_2, 
+                                            window_length=winlen, polyorder=SG_step2, 
+                                            axis=1)
+            ddy_2 = xr.DataArray(temp,coords={'time':ddy_2.time,
+                                                'longitude':ddy_2.longitude,
+                                                'latitude':ddy_2.latitude},
+                                          dims = ('time','latitude','longitude'))
+
+            
+        else:
+            error('latitude axis is not as expected, or not named latitude, lat or lats')
+    
+    
+    betaM = betaM1 - ddy_2
+    # Now calculate Ks from BetaM
+    Ks2 = a * a * betaM/Um
+
+    Ks = np.sqrt(Ks2)
+
+    return(ddy_1,Ks,Ks2) #,betaM)
+
+def calc_Ks_rolling(Uin,rolling=0,rolling2=0,rolling3=0):
     ## Calculate BetaM
     ## Hoskins and Karoly (see also Vallis (page 551) and Petoukhov et al 2013
     ## and Hoskins and Ambrizzi (1993))
@@ -175,3 +250,4 @@ def ddy_merc(invar):
 
     return(dvardy)
             
+
