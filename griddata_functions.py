@@ -150,53 +150,25 @@ def ddy_vect(invar):
 
 
 def ddphi(invar):
-    # Using this rather ugly approach to allowing different names for the latitude variable
-    # Because of the way I have written the xarray code to use variable names, names are hard-coded in places
+    # in spherical coordinate, del = 1/r d/dphi
+    a = 6.3781E6
 
     try:
-        nlats = len(invar['lat'])
-        latname = 'lat'
-    except KeyError:
-        nlats = len(invar['latitude'])
-        latname = 'latitude'
+        lats_r = np.deg2rad(invar.latitude)
+    except AttributeError:
+        lats_r = np.deg2rad(invar.lat)
 
-
-    if latname == 'lat':
-        dims_var = invar.dims
-        latidx_var = dims_var.index('lat')
-
-        dims_lat = invar.lat.dims
-        latidx_lat = dims_lat.index('lat')
-
-        ddphi = invar.copy(deep=True)
-        ddphi.isel(lat=0)[...] = 0
-
-        dvar = np.gradient(invar,axis=latidx_var)
-        dlat = np.gradient(np.deg2rad(invar.lat),axis=latidx_lat)
-        if len(dims_var) > 1:
-            dvardphi = (dvar/dlat[:,None]) - (invar/rearth) * np.tan(np.deg2rad(invar.lat))
-        else:
-            dvardphi = dvar/dlat - (invar/rearth) * np.tan(np.deg2rad(invar.lat))[:,None]
-
-    elif latname == 'latitude':
-        dims_var = invar.dims
-        latidx_var = dims_var.index('latitude')
-
-        dims_lat = invar.latitude.dims
-        latidx_lat = dims_lat.index('latitude')
-
-        ddphi = invar.copy(deep=True)
-        ddphi.isel(latitude=0)[...] = 0
-
-        dvar = np.gradient(invar,axis=latidx_var)
-        dlat = np.gradient(np.deg2rad(invar.latitude),axis=latidx_lat)
-
-        if len(dims_var) > 1:
-            dvardphi = (dvar/dlat[:,None]) - (invar/rearth) * np.tan(np.deg2rad(invar.latitude))
-        else:
-            dvardphi = (dvar/dlat) - (invar/rearth) * np.tan(np.deg2rad(invar.latitude))
-
-
+    try:
+        lat_r = U_testing.lat
+        dvar = U_testing.differentiate('lat') 
+        dphi = lats_r.differentiate('lat')
+        dvardphi = (dvar/dphi)*1/a 
+    except AttributeError:
+        lat_r = U_testing.latitude       
+        dvar = U_testing.differentiate('latitude') 
+        dphi = lats_r.differentiate('latitude')
+        dvardphi = (dvar/dphi)*1/a     
+        
     return(dvardphi)
 
 def ddx(invar):
