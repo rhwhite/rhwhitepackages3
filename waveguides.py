@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 from datetime import date
 
 # Look for waveguides by searching for turning points at specific wavenumbers
-def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwgs,toprint=False,SH=False):
+def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwgs,toprint=False):
     # Check that latitudes are the correct way round!
     if inKs2.latitude[0] > inKs2.latitude[1]:
         exit('latitudes must be south to north')
@@ -27,15 +27,9 @@ def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwg
     nlats = 90
     nk = wnend - wnstart+1
 
-    if SH:
-        wg_map = xr.DataArray(np.ndarray([nk,nlats]),coords={
+    wg_map = xr.DataArray(np.ndarray([nk,nlats]),coords={
                        'k':np.arange(wnstart,wnend+1),
-                       'latitude':np.arange(-90.0,0.0)},
-                        dims=('k','latitude'))
-    else:
-        wg_map = xr.DataArray(np.ndarray([nk,nlats]),coords={
-                       'k':np.arange(wnstart,wnend+1),
-                       'latitude':np.arange(0.0,90.0)},
+                       'latitude':inKs2.latitude},
                         dims=('k','latitude'))
 
     wg_map[...] = 0
@@ -119,22 +113,33 @@ def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwg
 
     return(WGlatmin,WGlatmax,WGdepth,WGwidth,wg_map.values)
 
-def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
+def calc_waveguide_map(Uin,Ksin,Ks2in,lat1,lat2,
                         Uthresh,wnstart,wnend,minwidth,mindepth,
-                        Uname,interp =False,toprint=False,SH=False):
+                        Uname,interp =False,toprint=False):
 
-    # Get data to make files
-    ntimes = len(Ks2in.time)
+
+    # Check which way the latitudes are and flip indata if necessary
+    if Ks2in.isel(latitude=0).latitude.values > Ks2in.isel(latitude=1).latitude.values:
+        Ks2in = Ks2in.isel(latitude=slice(None, None, -1))
+    if Ksin.isel(latitude=0).latitude.values > Ksin.isel(latitude=1).latitude.values:
+        Ksin = Ksin.isel(latitude=slice(None, None, -1))
+    if Uin.isel(latitude=0).latitude.values > Uin.isel(latitude=1).latitude.values:
+        Uin = Uin.isel(latitude=slice(None, None, -1))
+
+    # Set size of waveguide arrays 
+    ntimes = len(Ks2in.time) # number of timesteps
     try:
-        nlons = len(Ks2in.longitude)
+        nlons = len(Ks2in.longitude) # number of longitudes
         ZM=False
     except AttributeError:
         ZM=True
         nlons=1
-        
-    # Set maximum number of waveguides that can exist at any longitude:
-    nwgs = 10
 
+    nwgs = 10 # maximum number of waveguides that can exist at any longitude:
+    nk = wnend - wnstart+1 # number of wavenumbers to look for waveguides for
+    nlats = len(Ks2in.latitude.sel(latitude = slice(lat1,lat2))) # latitudes
+
+    # define arrays
     WGlatmin = np.ndarray([nwgs,wnend - wnstart+1,nlons,ntimes])
     WGlatmax = np.ndarray([nwgs,wnend - wnstart+1,nlons,ntimes])
     WGdepth = np.ndarray([nwgs,wnend - wnstart+1,nlons,ntimes])
@@ -145,33 +150,12 @@ def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
     WGdepth[...] = np.nan
     WGwidth[...] = np.nan
 
-    # Check which way the latitudes are and flip indata if necessary
-    if Ks2in.isel(latitude=0).latitude.values > Ks2in.isel(latitude=1).latitude.values:
-        Ks2in = Ks2in.isel(latitude=slice(None, None, -1))
-    if Ksin.isel(latitude=0).latitude.values > Ksin.isel(latitude=1).latitude.values:
-        Ksin = Ksin.isel(latitude=slice(None, None, -1))
-    if Uin.isel(latitude=0).latitude.values > Uin.isel(latitude=1).latitude.values:
-        Uin = Uin.isel(latitude=slice(None, None, -1))
-
-    lat1 = latstart
-    lat2 = latend
-    
-    # define waveguide map so latitude indexing works easily
-    nlats = 90
-    nk = wnend - wnstart+1
-
     WGmap = np.ndarray([ntimes,nk,nlats,nlons])
 
-    # define map as xarray so we can reference latitudes more easily
-    if SH:
-        xr_wg_map = xr.DataArray(WGmap,coords={
+    # define map as xarray so we can reference and fill latitudes more easily
+    xr_wg_map = xr.DataArray(WGmap,coords={
                        'time':Ks2in.time,'k':np.arange(wnstart,wnend+1),
-                       'longitude':Ks2in.longitude,'latitude':np.linspace(-90,0,nlats)},
-                        dims=('time','k','latitude','longitude'))
-    else:
-        xr_wg_map = xr.DataArray(WGmap,coords={
-                       'time':Ks2in.time,'k':np.arange(wnstart,wnend+1),
-                       'longitude':Ks2in.longitude,'latitude':np.linspace(0,90,nlats)},
+                       'longitude':Ks2in.longitude,'latitude':Ks2in.latitude.sel(latitude = slice(lat1,lat2))},
                         dims=('time','k','latitude','longitude'))
     xr_wg_map[...] = 0
     
@@ -181,8 +165,8 @@ def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
         for ilon in np.arange(0,nlons):
             if toprint: print('longitude: ' + str(ilon))
             if ZM: # then zonal mean
-                Ks2_sel = Ks2in.isel(time=timein).sel(latitude=slice(lat1,lat2)).copy(deep=True).sel(level=250)
-                U_sel = Uin.isel(time=timein).sel(latitude=slice(lat1,lat2)).copy(deep=True).sel(level=250)
+                Ks2_sel = Ks2in.isel(time=timein).sel(latitude=slice(lat1,lat2)).copy(deep=True)
+                U_sel = Uin.isel(time=timein).sel(latitude=slice(lat1,lat2)).copy(deep=True)
 
             else: # select longitude
                 Ks2_sel = Ks2in.isel(time=timein).isel(longitude=ilon).sel(latitude = slice(lat1,lat2)).squeeze()
@@ -192,7 +176,7 @@ def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
             (WGlatmin[:,:,ilon,timein],WGlatmax[:,:,ilon,timein],WGdepth[:,:,ilon,timein],WGwidth[:,:,ilon,timein],
                 xr_wg_map.isel(time=timein).isel(longitude=ilon).values[...]) = iden_waveguide_TPs_map(Ks2_sel,U_sel,
                     Uthresh=Uthresh,minwidth=minwidth,mindepth=mindepth,
-                    wnstart=wnstart,wnend=wnend,nwgs=nwgs,toprint=toprint,SH=SH)
+                    wnstart=wnstart,wnend=wnend,nwgs=nwgs,toprint=toprint)
             
     ## Make dataset
     if ZM:
@@ -240,133 +224,73 @@ def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
 
 
 
-# Look for waveguides by searching for turning points at specific wavenumbers
-def iden_waveguide_TPs(inKs2,inU,ninterp,Uthresh,WGwidth,WGdepth,wnstart,wnend,nwgs):
-    orig_lats = inKs2.latitude
-    # latitudes for cubic spline interpolation
-    lats_li = np.linspace(np.amin(orig_lats),np.amax(orig_lats),ninterp)
+def calc_waveguide_clims(hemi,plev,dirin,WGmap_filein):
+    # Read in waveguide maps
+    WGmap = xr.open_dataset(dirin + '/' + WGmap_filein + '.nc')
 
-    TPs = {}
-    WGlatmin = np.ndarray([nwgs,wnend - wnstart+1])
-    WGlatmax = np.ndarray([nwgs,wnend - wnstart+1])
-    WGlatmin[...] = np.nan
-    WGlatmax[...] = np.nan
+    # Remove leapyears
+    datain = WGmap[wavelfilter][timefilter].sel(time=slice('1980','2022'))
+    datain_noleap = datain.sel(time=~((datain.time.dt.month == 2) & (datain.time.dt.day == 29)))
 
-    if np.any(np.isfinite(inKs2.values)): # only if there are some non-nan values
-        LI = interp1d(orig_lats[::-1],inKs2[::-1])
-        LI_U = interp1d(orig_lats[::-1],inU[::-1])
+    # Check that we have full years:
+    if (len(datain_noleap.time)%365) != 0:
+        exit('need to do something else to make sure this is full years')
+ 
+    # convert to climatology through re-shaping and taking mean
+    nyears = int(len(datain_noleap.time)/365)
+        
+    daily_WGmap_NL_clim = xr.DataArray(np.reshape(datain_noleap.WG_map.values,[nyears,365,len(datain_noleap.k),
+                                                    len(datain_noleap.latitude),len(datain_noleap.longitude)]).mean(axis=0),
+                                                     dims=('time','k','latitude','longitude'),
+                                                     coords={'time':np.arange(0,365),
+                                                             'k':datain_noleap.k,
+                                                             'latitude':datain_noleap.latitude,
+                                                             'longitude':datain_noleap.longitude})
 
-        Ks2_li = xr.DataArray(LI(lats_li),coords={'latitude':lats_li},dims = ('latitude'))
-        U_li = xr.DataArray(LI_U(lats_li),coords={'latitude':lats_li},dims = ('latitude'))
 
-        # For each wavenumber (5,6,7,8) find the turning points
+    # created smoothed climatology at each point
+    daily_WGmap_NL_clim_smooth = daily_WGmap_NL_clim.copy(deep=True)
 
-        for iwn in range(wnstart,wnend+1):
-            Ks2_wn = (Ks2_li - iwn**2)
-            # Find local minima
-            TPs[iwn] = np.where(np.diff(np.sign(Ks2_wn)))[0]
+    for ilat in range(0,len(daily_WGmap_NL_clim.latitude)):
+        for ilon in range(0,len(daily_WGmap_NL_clim.longitude)):
+            for ik in range(0,len(daily_WGmap_NL_clim.k)):
+                daily_WGmap_NL_clim_smooth[:,ik,ilat,ilon] = scipy.signal.savgol_filter(daily_WGmap_NL_clim[:,ik,ilat,ilon],window_length=51, polyorder=1)
 
-            # For each pair of TPs, check if it's a waveguide
-            iwg = 0
-            nTPs = len(TPs[iwn])
-            for iTP in np.arange(0,nTPs-1):
-                # Waveguide depth critera:
-                if np.any(Ks2_li[TPs[iwn][iTP]+1:TPs[iwn][iTP+1]-1].values > (iwn+WGdepth)**2):
-                    # U threshold criteria
-                    if ~np.any(U_li[TPs[iwn][iTP]:TPs[iwn][iTP+1]].values < Uthresh):
-                        # Width of waveguide criteria:
-                        TPlat1 = Ks2_li.latitude[TPs[iwn][iTP]]
-                        TPlat2 = Ks2_li.latitude[TPs[iwn][iTP+1]+1] # add 1 as the turning points finds the latitude before
-                        if np.abs(TPlat1 - TPlat2) >= WGwidth:
-                            WGlatmin[iwg,iwn-wnstart] = TPlat1
-                            WGlatmax[iwg,iwn-wnstart] = TPlat2
-                            iwg +=1
 
-    return(WGlatmin,WGlatmax)
+    daily_WGmap_NL_clim_smooth= daily_WGmap_NL_clim_smooth.to_dataset(name='WGmap_clim_smooth')
+    daily_WGmap_NL_clim_smooth.attrs["description"] = ("WGmap 1980-2022 smooth climatology with savgol_filter" + 
+                                "with window length = 51 and polyorder = 1")
 
-# count_waveguides and write out magnitude and latitude
-# Only looking for waveguides at 2 specific latitudes
-def identify_waveguides_mag(datain,wavenumber):
+    daily_WGmap_NL_clim_smooth.to_netcdf(dirin + '/' + WGmap_filein + '_smooth_clim.nc')
+    # tile and subtract to get anomalies
 
-    wnbrs = wavenumber * wavenumber
+    daily_WGmap_NL_clim_anoms = datain_noleap.WG_map - np.tile(daily_WGmap_NL_clim_smooth.WGmap_clim_smooth,(nyears,1,1,1))
+    daily_WGmap_NL_clim_anoms.to_netcdf(dirin + '/' + WGmap_filein + 'anoms_from_smooth_clim.nc')
 
-    temp = datain.copy(deep=True)
+    # Repeat with binary yes/no to get climatological frequency
+    datain_noleap_freq = np.where(datain_noleap.WG_map>0,1,0)
 
-    # Subtropical waveguide
-    # Look for a value of wnbrs between 30 and 36
-    # Look for at least 6deg (3 consecutive gridboxes) positive values between 34 and 46
-    # Look for a value of wnbrs between 44 and 60
-    wguideST = np.zeros(len(temp.longitude))
-    wguideML = np.zeros(len(temp.longitude))
+    daily_WGmap_NL_clim_freq = xr.DataArray(np.reshape(datain_noleap_freq,[nyears,365,len(datain_noleap.k),
+                                                    len(datain_noleap.latitude),len(datain_noleap.longitude)]).mean(axis=0),
+                                                     dims=('time','k','latitude','longitude'),
+                                                     coords={'time':np.arange(0,365),
+                                                             'k':datain_noleap.k,
+                                                             'latitude':datain_noleap.latitude,
+                                                             'longitude':datain_noleap.longitude})
+    # created smoothed climatology at each point
+    daily_WGmap_NL_clim_freq_smooth = daily_WGmap_NL_clim_freq.copy(deep=True)
 
-    wguideSTlat = np.zeros(len(temp.longitude))
-    wguideMLlat = np.zeros(len(temp.longitude))
-    
-    for ilon in range(0,len(temp.longitude)):
-        tempsel = temp.isel(longitude=ilon).copy(deep=True)
-        # Cut off all values below wnbrs:
-        tempsel[:] = np.where(tempsel<wnbrs,wnbrs,tempsel)    
-        if np.any(tempsel.sel(latitude=slice(36,30)) == wnbrs):
-            for ilat in range(34,46):
-                result = np.all(tempsel.sel(latitude=slice(ilat+6,ilat)) > wnbrs)
-                if result:
-                    if np.any(tempsel.sel(latitude = slice(60,44)) == wnbrs):
-                        wguideST[ilon] = np.amax(tempsel.sel(latitude=slice(46,34))) - wnbrs
-                        templats = tempsel.sel(latitude=slice(52,34))
-                        wguideSTlat[ilon] = templats.latitude.isel(latitude = np.argmax(templats.values))
-                        break
-                    else:
-                        wguideST[ilon] = 0
-            else:
-                wguideST[ilon] = 0
-        else:
-            wguideST[ilon] = 0
+    for ilat in range(0,len(daily_WGmap_NL_clim_freq.latitude)):
+        for ilon in range(0,len(daily_WGmap_NL_clim_freq.longitude)):
+            for ik in range(0,len(daily_WGmap_NL_clim_freq.k)):
+                daily_WGmap_NL_clim_freq_smooth[:,ik,ilat,ilon] = scipy.signal.savgol_filter(
+                                    daily_WGmap_NL_clim_freq[:,ik,ilat,ilon],
+                                    window_length=51, polyorder=1)
 
-        if np.any(tempsel.sel(latitude=slice(50,40)) == wnbrs):
-            for ilat in range(48,60):
-                result = np.all(tempsel.sel(latitude=slice(ilat+6,ilat)) > wnbrs)
-                if result:
-                    if np.any(tempsel.sel(latitude = slice(70,58)) == wnbrs):
-                        wguideML[ilon] = np.amax(tempsel.sel(latitude=slice(60,48))) - wnbrs
-                        templats = tempsel.sel(latitude=slice(66,48))
-                        wguideMLlat[ilon] = templats.latitude.isel(latitude = np.argmax(templats.values))
-                        break
-                    else:
-                        wguideML[ilon] = 0
-            else:
-                wguideML[ilon] = 0
-        else:
-            wguideML[ilon] = 0
 
-    return(wguideST,wguideSTlat,wguideML,wguideMLlat)
+    daily_WGmap_NL_clim_freq_smooth= daily_WGmap_NL_clim_freq_smooth.to_dataset(name='WGmap_freq_clim_smooth')
+    daily_WGmap_NL_clim_freq_smooth.attrs["description"] = ("WGmap frequency 1980-2022 smooth climatology with savgol_filter" + 
+                                "with window length = 51 and polyorder = 1")
 
-# Identify waveguides in data, only looking for waveguides at certain latitudes, can't stray from this!
-def waveguide_analysis_fixedlat(Ks2in,wnb):
-    maxKs = 200
-    Ks2in[...] = np.where(Ks2in < maxKs,Ks2in,maxKs)
-    Ks2in[...] = np.where(Ks2in > -maxKs,Ks2in,-maxKs)
+    daily_WGmap_NL_clim_freq_smooth.to_netcdf(dirin + '/' + WGmap_filein + '_freq_smooth_clim.nc')
 
-    waveguide_freq_ST = np.zeros([len(Ks2in.time),len(Ks2in.longitude)])
-    waveguide_freq_ML = np.zeros([len(Ks2in.time),len(Ks2in.longitude)])
-    waveguide_lat_ST = np.zeros([len(Ks2in.time),len(Ks2in.longitude)])
-    waveguide_lat_ML = np.zeros([len(Ks2in.time),len(Ks2in.longitude)])
-    
-    for itime in range(0,len(Ks2in.time)):
-    #    if itime % 100 == 0: print itime
-                   
-        waveguide_freq_ST[itime],waveguide_lat_ST[itime],waveguide_freq_ML[itime],waveguide_lat_ML[itime] = identify_waveguides_mag(Ks2in.isel(time=itime),wnb)
-    
-    DA_ST = xr.DataArray(waveguide_freq_ST, coords=[Ks2in.time, Ks2in.longitude], dims=['time', 'longitude'])
-    DA_ML = xr.DataArray(waveguide_freq_ML, coords=[Ks2in.time, Ks2in.longitude], dims=['time', 'longitude'])
-    DA_STlat = xr.DataArray(waveguide_lat_ST, coords=[Ks2in.time, Ks2in.longitude], dims=['time', 'longitude'])
-    DA_MLlat = xr.DataArray(waveguide_lat_ML, coords=[Ks2in.time, Ks2in.longitude], dims=['time', 'longitude'])
-
-    DS_ST = DA_ST.to_dataset(name='waveguide_freq_ST')
-    DS_ML = DA_ML.to_dataset(name='waveguide_freq_ML')
-    DS_STlat = DA_STlat.to_dataset(name='waveguide_lat_ST')
-    DS_MLlat = DA_MLlat.to_dataset(name='waveguide_lat_ML')
-    
-    towrite = xr.merge([DS_ST, DS_ML,DS_STlat,DS_MLlat])
-    del towrite.time.encoding["contiguous"]
-    
-    return(towrite) 
