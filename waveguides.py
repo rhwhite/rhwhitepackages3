@@ -7,7 +7,7 @@ from scipy.interpolate import interp1d
 from datetime import date
 
 # Look for waveguides by searching for turning points at specific wavenumbers
-def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwgs,toprint=False):
+def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwgs,toprint=False,SH=False):
     # Check that latitudes are the correct way round!
     if inKs2.latitude[0] > inKs2.latitude[1]:
         exit('latitudes must be south to north')
@@ -27,7 +27,13 @@ def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwg
     nlats = 90
     nk = wnend - wnstart+1
 
-    wg_map = xr.DataArray(np.ndarray([nk,nlats]),coords={
+    if SH:
+        wg_map = xr.DataArray(np.ndarray([nk,nlats]),coords={
+                       'k':np.arange(wnstart,wnend+1),
+                       'latitude':np.arange(-90.0,0.0)},
+                        dims=('k','latitude'))
+    else:
+        wg_map = xr.DataArray(np.ndarray([nk,nlats]),coords={
                        'k':np.arange(wnstart,wnend+1),
                        'latitude':np.arange(0.0,90.0)},
                         dims=('k','latitude'))
@@ -68,7 +74,7 @@ def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwg
                         print(max_Ks2)
                         print(iwn+mindepth)
                     # Apply waveguide depth critera:
-                    if max_Ks2 > (iwn+mindepth)**2:
+                    if max_Ks2 >= (iwn+mindepth)**2:
                         # U threshold criteria - WITHIN waveguide (i.e. don't include outside edges)
                         if toprint: 
                             print('U values for threshold check')
@@ -115,7 +121,7 @@ def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwg
 
 def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
                         Uthresh,wnstart,wnend,minwidth,mindepth,
-                        Uname,interp =False,toprint=False):
+                        Uname,interp =False,toprint=False,SH=False):
 
     # Get data to make files
     ntimes = len(Ks2in.time)
@@ -157,7 +163,13 @@ def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
     WGmap = np.ndarray([ntimes,nk,nlats,nlons])
 
     # define map as xarray so we can reference latitudes more easily
-    xr_wg_map = xr.DataArray(WGmap,coords={
+    if SH:
+        xr_wg_map = xr.DataArray(WGmap,coords={
+                       'time':Ks2in.time,'k':np.arange(wnstart,wnend+1),
+                       'longitude':Ks2in.longitude,'latitude':np.linspace(-90,0,nlats)},
+                        dims=('time','k','latitude','longitude'))
+    else:
+        xr_wg_map = xr.DataArray(WGmap,coords={
                        'time':Ks2in.time,'k':np.arange(wnstart,wnend+1),
                        'longitude':Ks2in.longitude,'latitude':np.linspace(0,90,nlats)},
                         dims=('time','k','latitude','longitude'))
@@ -180,7 +192,7 @@ def calc_waveguide_map(Uin,Ksin,Ks2in,latstart,latend,
             (WGlatmin[:,:,ilon,timein],WGlatmax[:,:,ilon,timein],WGdepth[:,:,ilon,timein],WGwidth[:,:,ilon,timein],
                 xr_wg_map.isel(time=timein).isel(longitude=ilon).values[...]) = iden_waveguide_TPs_map(Ks2_sel,U_sel,
                     Uthresh=Uthresh,minwidth=minwidth,mindepth=mindepth,
-                    wnstart=wnstart,wnend=wnend,nwgs=nwgs,toprint=toprint)
+                    wnstart=wnstart,wnend=wnend,nwgs=nwgs,toprint=toprint,SH=SH)
             
     ## Make dataset
     if ZM:
