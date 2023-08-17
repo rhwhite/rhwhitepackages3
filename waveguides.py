@@ -24,7 +24,7 @@ def iden_waveguide_TPs_map(inKs2,inU,Uthresh,minwidth,mindepth,wnstart,wnend,nwg
     WGwidth[...] = np.nan
 
     # define waveguide map so latitude indexing works easily
-    nlats = 90
+    nlats = len(inKs2.latitude)
     nk = wnend - wnstart+1
 
     wg_map = xr.DataArray(np.ndarray([nk,nlats]),coords={
